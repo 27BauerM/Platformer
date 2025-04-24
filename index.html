@@ -3,14 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Cube Game</title>
+    <title>2D Platformer</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #ccc; } /* Remove margin, hide scrollbars, light gray background */
-        canvas { display: block; } /* Ensure canvas takes up space */
+        body { margin: 0; overflow: hidden; background-color: #fff; } /* White background */
+        canvas { display: block; } 
+        #messageOverlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: black;
+            font-size: 48px;
+            font-family: sans-serif;
+            text-align: center;
+            display: none; /* Hidden by default */
+            background-color: rgba(255, 255, 255, 0.7); /* Semi-transparent white background */
+            padding: 20px;
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="messageOverlay">Level Complete!</div>
+
     <script type="importmap">
         {
             "imports": {
@@ -19,251 +35,265 @@
         }
     </script>
     <script type="module">
-        // Game logic will go here
         import * as THREE from 'three';
 
-        console.log("Three.js loaded. Ready for game logic.");
+        console.log("Starting new 2D Platformer");
+
+        // --- Constants ---
+        const playerSize = 1;
+        const platformHeight = 0.3;
+        const flatDepth = 0.1; // Visual depth for 2D elements
+        const moveSpeed = 0.1;
+        const jumpStrength = 0.18;
+        const gravity = -0.007;
+        const worldWidth = 30; // How wide the playable area is
+        const lavaStartTime = 5000; // 5 seconds in milliseconds
+        const lavaRiseSpeed = 0.0015;
+        const fallResetThreshold = -10;
 
         // --- Basic Setup ---
         const scene = new THREE.Scene();
+        const clock = new THREE.Clock(); // For timing
         const aspect = window.innerWidth / window.innerHeight;
-        const frustumSize = 15; // Controls the visible area height
+        const frustumSize = 15; 
         const camera = new THREE.OrthographicCamera(frustumSize * aspect / -2, frustumSize * aspect / 2, frustumSize / 2, frustumSize / -2, 0.1, 100);
-        camera.position.z = 10; // Position camera to look along the Z axis
-
+        camera.position.z = 10; 
         const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0xcccccc); // Match body background
+        renderer.setClearColor(0xffffff); // White background
+        const messageOverlay = document.getElementById('messageOverlay');
 
         // --- Lighting ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft white light
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); 
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(5, 10, 7.5); // Keep light slightly offset
+        directionalLight.position.set(5, 10, 5); 
         scene.add(directionalLight);
 
-        // --- Player Cube ---
-        const playerSize = 1;
-        const flatDepth = 0.1; // Small depth for 2D look
-        const cubeGeometry = new THREE.BoxGeometry(playerSize, playerSize, flatDepth);
-        const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black
-        const player = new THREE.Mesh(cubeGeometry, cubeMaterial);
-        player.position.z = 0; // Ensure player is on the Z=0 plane
-        scene.add(player);
-
-        // --- Platforms ---
+        // --- Materials ---
+        const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Black
         const platformMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Grey
+        const lavaMaterial = new THREE.MeshStandardMaterial({ color: 0xff4500, emissive: 0xcc3700 }); // Orange-Red Lava
+
+        // --- Game Objects (Initialization Placeholder) ---
+        let player, ground, lava;
         const platforms = [];
-        const basePlatformHeight = 0.2;
+        let finalPlatform;
 
-        // Ground platform
-        const groundWidth = 20; // Wider ground for 2D
-        const groundGeometry = new THREE.BoxGeometry(groundWidth, basePlatformHeight, flatDepth * 5); // Slightly thicker ground visually
-        const ground = new THREE.Mesh(groundGeometry, platformMaterial);
-        ground.position.set(0, -0.1, 0); // Center ground at Z=0
-        scene.add(ground);
-        platforms.push(ground);
-
-        // Function to create platforms (adapted for 2D)
-        function createPlatform(sizeX, posY, posX) { // Removed sizeY, sizeZ, posZ
-            const geometry = new THREE.BoxGeometry(sizeX, basePlatformHeight, flatDepth);
-            const platform = new THREE.Mesh(geometry, platformMaterial);
-            platform.position.set(posX, posY, 0); // Set Z to 0
-            scene.add(platform);
-            platforms.push(platform);
-            return platform;
-        }
-
-        // Simplified 2D Platform Layout (replace old platforms)
-        let currentY = 1.5;
-        let currentX = 3;
-        createPlatform(3, currentY, currentX); // Plat 1
-        currentY += 1.8; currentX -= 4;
-        createPlatform(2.5, currentY, currentX); // Plat 2
-        currentY += 1.5; currentX += 5;
-        createPlatform(2, currentY, currentX);   // Plat 3
-        currentY += 2.0; currentX += 3;
-        createPlatform(4, currentY, currentX);   // Plat 4
-        currentY += 1.7; currentX -= 6;
-        createPlatform(3, currentY, currentX);   // Plat 5
-        currentY += 1.8; currentX -= 2;
-        createPlatform(2, currentY, currentX);   // Plat 6
-        currentY += 1.6; currentX += 7;
-        createPlatform(3.5, currentY, currentX); // Plat 7
-        currentY += 1.9; currentX -= 3;
-        createPlatform(2.5, currentY, currentX); // Plat 8
-        currentY += 1.5; currentX -= 4;
-        createPlatform(3, currentY, currentX);   // Plat 9
-        currentY += 2.0; currentX += 2;
-        const finalPlatform = createPlatform(5, currentY, currentX); // Plat 10 - Final
-
-        // --- Lava ---
-        const lavaMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 }); // Red, slightly glowing
-        const lavaGeometry = new THREE.BoxGeometry(1, 0.2, flatDepth); // Start small, flat
-        const lava = new THREE.Mesh(lavaGeometry, lavaMaterial);
-        lava.position.y = -0.5; // Start below ground
-        lava.position.z = 0; // Ensure lava is on Z=0 plane
-        scene.add(lava);
-        const lavaRiseSpeed = 0.001;
-        const lavaExpandSpeed = 0.02;
-        const maxLavaScaleX = groundWidth; // Expand to ground width
-
-        // --- Game Variables ---
-        const moveSpeed = 0.1;
-        const jumpStrength = 0.15;
+        // --- Game State Variables ---
         let velocity = new THREE.Vector3();
-        const gravity = -0.005;
         let onGround = false;
-        const startPosition = new THREE.Vector3(0, 1.0, 0); // Start slightly above ground, Z=0
-        let levelComplete = false; // Flag for level completion
+        let levelComplete = false;
+        let gameStartTime = 0;
+        let lavaActive = false;
+        const startPosition = new THREE.Vector3(0, 1.0, 0); 
 
         // --- Input Handling ---
         const keys = {};
         document.addEventListener('keydown', (event) => { keys[event.key.toLowerCase()] = true; });
         document.addEventListener('keyup', (event) => { keys[event.key.toLowerCase()] = false; });
 
-        // --- Reset Function ---
-        function resetPlayer() {
+        // --- Platform Creation Function ---
+        function createPlatform(sizeX, posY, posX) { 
+            const geometry = new THREE.BoxGeometry(sizeX, platformHeight, flatDepth);
+            const platform = new THREE.Mesh(geometry, platformMaterial);
+            platform.position.set(posX, posY, 0); 
+            scene.add(platform);
+            platforms.push(platform);
+            return platform;
+        }
+
+        // --- Initialize Game Elements ---
+        function initGame() {
+            // Clear existing objects from scene if re-initializing
+            // (We'll refine this later if needed for reset)
+            platforms.length = 0; // Clear platforms array
+            scene.remove(player, ground, lava); // Remove old meshes if they exist
+
+            // Player
+            const playerGeometry = new THREE.BoxGeometry(playerSize, playerSize, flatDepth);
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
             player.position.copy(startPosition);
+            scene.add(player);
+
+            // Ground
+            const groundGeometry = new THREE.BoxGeometry(worldWidth, platformHeight * 2, flatDepth * 2); // Wider, slightly thicker ground
+            ground = new THREE.Mesh(groundGeometry, platformMaterial);
+            ground.position.set(0, -platformHeight, 0); // Position ground slightly lower
+            scene.add(ground);
+            platforms.push(ground);
+
+            // Platforms (Example layout)
+            let currentY = 1.5;
+            let currentX = 3;
+            createPlatform(3, currentY, currentX);      // Plat 1
+            currentY += 2.0; currentX -= 5;      
+            createPlatform(2.5, currentY, currentX);    // Plat 2
+            currentY += 1.8; currentX += 6;
+            createPlatform(2, currentY, currentX);      // Plat 3
+            currentY += 2.2; currentX += 4;
+            createPlatform(4, currentY, currentX);      // Plat 4
+            currentY += 1.9; currentX -= 7;
+            createPlatform(3, currentY, currentX);      // Plat 5
+            currentY += 2.1; currentX -= 3;
+            createPlatform(2, currentY, currentX);      // Plat 6
+            currentY += 1.7; currentX += 8;
+            createPlatform(3.5, currentY, currentX);    // Plat 7
+            currentY += 2.0; currentX -= 4;
+            createPlatform(2.5, currentY, currentX);    // Plat 8
+            currentY += 1.6; currentX -= 5;
+            createPlatform(3, currentY, currentX);      // Plat 9
+            currentY += 2.3; currentX += 3;
+            finalPlatform = createPlatform(5, currentY, currentX); // Plat 10 - Final
+
+            // Lava
+            const lavaGeometry = new THREE.BoxGeometry(worldWidth, 0.1, flatDepth);
+            lava = new THREE.Mesh(lavaGeometry, lavaMaterial);
+            lava.position.set(0, -worldWidth, 0); // Start way below screen
+            lava.scale.y = 0.1; // Start very thin
+            scene.add(lava);
+
+            // Reset State
             velocity.set(0, 0, 0);
-            onGround = true; // Player is placed back on the ground
+            onGround = false;
+            levelComplete = false;
+            messageOverlay.style.display = 'none'; // Hide message
+            gameStartTime = clock.getElapsedTime(); // Record start time for lava timer
+            lavaActive = false;
+        }
 
-            // Reset lava
-            lava.position.y = -0.5; // Reset to initial Y
-            lava.scale.set(1, 1, 1); // Reset to initial scale (Y and Z scale are not used for expansion)
-
-            // Reset level complete flag if necessary (might want to keep it completed though)
-            // levelComplete = false;
+        // --- Reset Function ---
+        function resetGame() {
+            console.log("Resetting game...");
+            // Instead of just moving, we re-initialize everything for a clean slate
+            initGame(); 
         }
 
         // --- Game Loop ---
         function animate() {
             requestAnimationFrame(animate);
+            const delta = clock.getDelta(); // Time since last frame
 
-            // --- Lava Movement & Expansion ---
-            // Expand lava horizontally (X) until it covers the ground area
-            if (lava.scale.x < maxLavaScaleX) {
-                lava.scale.x += lavaExpandSpeed;
-                // lava.scale.z += lavaExpandSpeed; // No Z expansion
-                 // Keep centered (not necessary if origin is center)
-                 if (lava.scale.x > maxLavaScaleX) lava.scale.x = maxLavaScaleX;
-                 // if (lava.scale.z > maxLavaScale) lava.scale.z = maxLavaScale; // No Z expansion
+            if (levelComplete) {
+                // Optionally freeze player/lava or do other win-state things
+                renderer.render(scene, camera);
+                return; // Stop game logic updates
             }
-            // Rise lava
-            lava.position.y += lavaRiseSpeed;
+
+            // --- Lava Logic ---
+            const elapsedTime = clock.getElapsedTime() - gameStartTime;
+            if (!lavaActive && elapsedTime > lavaStartTime / 1000) {
+                console.log("Activating Lava!");
+                lavaActive = true;
+                lava.position.y = ground.position.y - platformHeight; // Start rising from just below ground
+            }
+            if (lavaActive) {
+                lava.scale.y += lavaRiseSpeed; // Increase height
+                lava.position.y += (lavaRiseSpeed * platformHeight) / 2; // Move upwards as it scales
+            }
 
             // --- Physics & Movement ---
             velocity.y += gravity; // Apply gravity
 
-            // Basic ground/platform collision (vertical)
-            onGround = false;
+            // Horizontal Input
+            let moveX = 0;
+            if (keys['a']) moveX = -moveSpeed;
+            if (keys['d']) moveX = moveSpeed;
+            velocity.x = moveX;
+
+            // Jumping Input
+            if (keys[' '] && onGround) {
+                velocity.y = jumpStrength;
+                onGround = false;
+            }
+
+            // --- Collision Detection ---
+            // Projected position for collision checks
+            let projectedPosition = player.position.clone().add(velocity);
             let playerBox = new THREE.Box3().setFromObject(player);
-            let projectedPlayerBox = playerBox.clone().translate(new THREE.Vector3(0, velocity.y, 0)); // Project only vertical velocity for landing
-            let landedPlatform = null; // Keep track of the platform landed on
-
-            // Filter out walls from platform collision check (walls array is now empty)
-            const actualPlatforms = platforms.filter(p => !walls.includes(p)); 
-
-            for (const platform of actualPlatforms) {
+            let projectedPlayerBox = playerBox.clone().translate(velocity);
+            
+            // Vertical Collision (Platforms)
+            onGround = false;
+            for (const platform of platforms) {
                 const platformBox = new THREE.Box3().setFromObject(platform);
-
-                // Check for potential landing (player moving down, player currently above platform)
+                // Basic check: Moving down? About to intersect/pass platform?
                 if (velocity.y <= 0 && 
-                    player.position.y >= platform.position.y + basePlatformHeight / 2 + playerSize / 2 - 0.1 && // Adjusted player/platform height check
-                    projectedPlayerBox.min.y <= platform.position.y + basePlatformHeight / 2 && // Will player intersect or pass through on Y axis next frame?
-                    projectedPlayerBox.max.x > platform.position.x - platform.geometry.parameters.width / 2 && // Horizontal overlap check (X only)
-                    projectedPlayerBox.min.x < platform.position.x + platform.geometry.parameters.width / 2) {
-                   
+                    player.position.y >= platform.position.y + platformHeight / 2 + playerSize / 2 - 0.1 &&
+                    projectedPlayerBox.min.y <= platformBox.max.y && 
+                    projectedPlayerBox.max.x > platformBox.min.x && 
+                    projectedPlayerBox.min.x < platformBox.max.x) {
+                    
                     velocity.y = 0; // Stop falling
-                    player.position.y = platform.position.y + basePlatformHeight / 2 + playerSize / 2; // Correct position to be exactly on top
+                    projectedPosition.y = platformBox.max.y + playerSize / 2; // Correct position
                     onGround = true;
-                    landedPlatform = platform; // Store the platform landed on
-                    break; // Stop checking platforms after landing
+                    break; // Landed on one platform
                 }
             }
 
-            // Apply vertical velocity
-            player.position.y += velocity.y;
+            // Horizontal Collision (World Bounds)
+            const playerHalfWidth = playerSize / 2;
+            const worldBoundsX = worldWidth / 2;
+            if (projectedPosition.x - playerHalfWidth < -worldBoundsX) {
+                projectedPosition.x = -worldBoundsX + playerHalfWidth;
+                velocity.x = 0;
+            }
+            if (projectedPosition.x + playerHalfWidth > worldBoundsX) {
+                projectedPosition.x = worldBoundsX - playerHalfWidth;
+                velocity.x = 0;
+            }
 
-            // Check if player landed on the final platform (more robust check)
-            if (onGround && !levelComplete) { // Only check if on ground and level not already complete
+            // Apply final position
+            player.position.copy(projectedPosition);
+            player.position.y += velocity.y; // Apply remaining vertical velocity AFTER correction
+
+            // --- Other Checks ---
+            // Fall Reset Check
+            if (player.position.y < fallResetThreshold) {
+                console.log("Player fell off world.");
+                resetGame();
+                return; // Exit loop for this frame after reset
+            }
+
+            // Lava Collision Check
+            if (lavaActive) {
+                const lavaBox = new THREE.Box3().setFromObject(lava);
+                playerBox.setFromObject(player); // Update player box to current position
+                if (playerBox.intersectsBox(lavaBox)) {
+                    console.log("Player touched lava.");
+                    resetGame();
+                    return; // Exit loop for this frame after reset
+                }
+            }
+
+            // Level Complete Check
+            if (onGround) { // Check only when grounded
                 const finalPlatformBox = new THREE.Box3().setFromObject(finalPlatform);
-                // Use the current playerBox position for this check
                 playerBox.setFromObject(player); 
-                // Check if player's bottom is touching or slightly overlapping the final platform's top (Simplified for 2D)
                 const isTouchingFinalPlatform = 
-                    playerBox.min.y <= finalPlatformBox.max.y + 0.01 && // Slightly above or touching top
-                    playerBox.max.y > finalPlatformBox.max.y && // Player top is above platform top
-                    playerBox.max.x > finalPlatformBox.min.x && // Horizontal overlap (X only)
+                    playerBox.min.y <= finalPlatformBox.max.y + 0.01 && 
+                    playerBox.max.y >= finalPlatformBox.max.y && 
+                    playerBox.max.x > finalPlatformBox.min.x && 
                     playerBox.min.x < finalPlatformBox.max.x;
 
                 if (isTouchingFinalPlatform) {
                     console.log("Level Complete!");
                     levelComplete = true;
-                    // Optional: Stop lava
-                    // lavaRiseSpeed = 0; 
-                    // lavaExpandSpeed = 0;
+                    messageOverlay.style.display = 'block'; // Show message
+                    // No return here, let rendering happen one last time
                 }
             }
 
-            // Prevent falling through the absolute bottom (failsafe)
-            // Note: The lava check might trigger first
-            // if (player.position.y < player.geometry.parameters.height / 2) { ... } // Original failsafe might be redundant now
-
-            // --- Fall off world Reset Check ---
-            const fallResetThreshold = -5; // Set a Y-level significantly below the ground
-            if (player.position.y < fallResetThreshold) {
-                console.log("Player fell off the world. Resetting."); // Optional debug message
-                resetPlayer();
-            }
-
-            // --- Lava Collision Check ---
-            const lavaBox = new THREE.Box3().setFromObject(lava);
-            // Update playerBox to current position before lava check
-            playerBox.setFromObject(player);
-            if (playerBox.intersectsBox(lavaBox)) {
-                resetPlayer();
-                // Optional: Add a small delay or visual effect on reset
-            }
-
-            // Horizontal Movement Input (WASD)
-            let moveX = 0;
-            if (keys['a']) moveX = -moveSpeed;
-            else if (keys['d']) moveX = moveSpeed;
-
-            // --- Wall Collision Check (Horizontal) --- Simplified to X bounds ---
-            // Remove old wall object collision
-            const playerHalfWidth = playerSize / 2;
-            const worldBoundsX = groundWidth / 2; // Use ground width as bounds
-
-            // Check X bounds collision
-            if (player.position.x + moveX - playerHalfWidth < -worldBoundsX || player.position.x + moveX + playerHalfWidth > worldBoundsX) {
-                 moveX = 0; // Prevent movement if it would go out of bounds
-            }
-
-            // Apply horizontal movement if allowed
-            if (!levelComplete) { // Prevent movement after completion (removed canMoveX/Z logic)
-                player.position.x += moveX;
-            }
-
-            // Jumping (Space)
-            if (keys[' '] && onGround && !levelComplete) { // Prevent jumping after completion
-                velocity.y = jumpStrength; // Apply upward force
-                onGround = false; // No longer on the ground
-            }
-
-            // --- Camera Follow --- 
-            // Simple 2D camera follow (adjust Y slightly)
-            const targetCameraPosition = new THREE.Vector3(player.position.x, player.position.y + 2, camera.position.z); // Follow X/Y, keep Z fixed
-            // Smooth camera movement (lerp)
+            // --- Camera Follow ---
+            const targetCameraPosition = new THREE.Vector3(player.position.x, player.position.y + 3, camera.position.z);
             camera.position.lerp(targetCameraPosition, 0.1);
-            // camera.lookAt(player.position); // Not needed for Orthographic looking down Z
+            // camera.lookAt(player.position.x, player.position.y, 0); // Optional for ortho
 
             // --- Rendering ---
             renderer.render(scene, camera);
         }
 
-        // Handle window resize
+        // --- Window Resize Handler ---
         window.addEventListener('resize', () => {
             const aspect = window.innerWidth / window.innerHeight;
             camera.left = frustumSize * aspect / -2;
@@ -274,9 +304,10 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Initialize player position
-        resetPlayer(); // Start the player at the defined start position
+        // --- Start Game ---
+        initGame(); // Initialize objects and state
         animate(); // Start the game loop
+
     </script>
 </body>
 </html> 
